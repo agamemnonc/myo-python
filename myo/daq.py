@@ -54,7 +54,6 @@ class _MyoDaq(object):
         self._total_channels = None
 
     def start(self):
-        myo.init(sdk_path='Coding/myo-python/myo-sdk-win-0.9.0')
         self.hub = myo.Hub()
 
         self._flag = True
@@ -113,7 +112,7 @@ class MyoDaqEMG(_MyoDaq):
                                         samples_per_read=samples_per_read)
         self.listener = MyoEmgListener()
         self._total_channels = 8
-        self._rate = 200.
+        self.rate = 200.
 
 class MyoDaqIMU(_MyoDaq):
     """
@@ -140,4 +139,4 @@ class MyoDaqIMU(_MyoDaq):
                                         samples_per_read=samples_per_read)
         self.listener = MyoIMUCollector()
         self._total_channels = 1
-        self._rate = 50.
+        self.rate = 50.
