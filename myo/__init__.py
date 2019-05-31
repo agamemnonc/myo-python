@@ -25,6 +25,6 @@ __author__ = 'Niklas Rosenstein <rosensteinniklas@gmail.com>'
 
 from ._ffi import *
 from ._device_listener import DeviceListener, ApiDeviceListener
-from .daq import MyoEMGDAQ, MyoIMUDAQ
+from .daq import MyoDaqEMG, MyoDaqIMU
 
 supported_sdk_version = '0.9.0'
