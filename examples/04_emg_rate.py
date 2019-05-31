@@ -31,7 +31,7 @@ class EmgRate(myo.DeviceListener):
 
   def __init__(self, n):
     super(EmgRate, self).__init__()
-    self.times = collections.deque()
+    self.times = collections.deque(maxlen=n)
     self.last_time = None
     self.n = int(n)
 
@@ -42,15 +42,13 @@ class EmgRate(myo.DeviceListener):
     else:
       return 1.0 / (sum(self.times) / float(self.n))
 
-  def on_arm_synced(self, event):
+  def on_connected(self, event):
     event.device.stream_emg(True)
 
   def on_emg(self, event):
     t = time.clock()
     if self.last_time is not None:
       self.times.append(t - self.last_time)
-      if len(self.times) > self.n:
-        self.times.popleft()
     self.last_time = t
 
 
@@ -58,6 +56,7 @@ def main():
   myo.init(sdk_path='../myo-sdk-win-0.9.0')
   hub = myo.Hub()
   listener = EmgRate(n=50)
+  # The timeout time in run will determine how often an update will be displaed
   while hub.run(listener.on_event, 500):
     print("\r\033[KEMG Rate:", listener.rate, end='')
     sys.stdout.flush()
