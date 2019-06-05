@@ -1,6 +1,5 @@
 import queue
 from threading import Lock, Thread
-import time
 
 import myo
 import numpy as np
@@ -61,6 +60,7 @@ class MyoDaqEMG(_MyoDaq):
         Fifo Queue to store incoming data.
     """
 
+class MyoDaqEMG(_MyoDaq):
     def __init__(self, channels, samples_per_read):
         super().__init__()
         self.channels = channels
