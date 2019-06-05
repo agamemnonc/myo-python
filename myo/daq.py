@@ -138,7 +138,7 @@ class MyoDaqIMU(_MyoDaq):
 
         Returns
         -------
-        data : ndarray, shape=(num_channels, num_samples)
+        data : ndarray, shape=(4, num_samples)
             Data read from the device. Each channel is a row and each column
             is a point in time.
         """
