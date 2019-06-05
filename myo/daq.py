@@ -1,5 +1,6 @@
 import queue
 from threading import Lock, Thread
+import time
 
 import myo
 import numpy as np
@@ -60,20 +61,33 @@ class MyoDaqEMG(_MyoDaq):
         Fifo Queue to store incoming data.
     """
 
-class MyoDaqEMG(_MyoDaq):
     def __init__(self, channels, samples_per_read):
         super().__init__()
         self.channels = channels
         self.samples_per_read = samples_per_read
 
     def on_connected(self, event):
+        """Enables EMG streaming."""
         event.device.stream_emg(True)
 
     def on_emg(self, event):
+        """Updates data queue when an EMG event happens."""
         with self._lock:
             self.data_queue.put(event.emg)
 
     def read(self):
+        """
+        Request a sample of data from the device.
+
+        This is a blocking method, meaning it returns only once the requested
+        number of samples are available.
+
+        Returns
+        -------
+        data : ndarray, shape=(num_channels, num_samples)
+            Data read from the device. Each channel is a row and each column
+            is a point in time.
+        """
         data = []
         while len(data) < self.samples_per_read:
             try:
@@ -107,13 +121,27 @@ class MyoDaqIMU(_MyoDaq):
         self.samples_per_read = samples_per_read
 
     def on_connected(self, event):
+        """Enables RSII streaming."""
         event.device.request_rssi()
 
     def on_orientation(self, event):
+        """Updates data queue when an orientation event happens."""
         with self._lock:
             self.data_queue.put(event.orientation)
 
     def read(self):
+        """
+        Request a sample of data from the device.
+
+        This is a blocking method, meaning it returns only once the requested
+        number of samples are available.
+
+        Returns
+        -------
+        data : ndarray, shape=(num_channels, num_samples)
+            Data read from the device. Each channel is a row and each column
+            is a point in time.
+        """
         data = []
         while len(data) < self.samples_per_read:
             try:
