@@ -1,4 +1,4 @@
-from collections import deque
+import queue
 from threading import Lock, Thread
 import time
 
@@ -6,137 +6,120 @@ import myo
 import numpy as np
 
 
-class _MyoListener(myo.DeviceListener):
-    """Base simple Myo device listener."""
-    def __init__(self):
-        self.lock = Lock()
-        self.data = []
+class _MyoDaq(myo.DeviceListener):
+    """
+    Base class for Myo daq devices
 
-    def get_data(self):
-        with self.lock:
-            return list(self.data)
+    Warning: This class should not be used directly.
+    Use derived classes instead.
+    """
 
-
-class MyoEmgListener(_MyoListener):
-    """Simple Myo EMG device listener."""
     def __init__(self):
         super().__init__()
+        self.data_queue = queue.Queue()
+        self._hub = myo.Hub()
+        self._lock = Lock()
+
+    def start(self):
+        self._thread = Thread(target=self._run)
+        self._flag = True
+        self._thread.start()
+
+    def _run(self):
+        with self._hub.run_in_background(self.on_event):
+            while self._flag:
+                time.sleep(1e-6)
+
+    def stop(self):
+        self._flag = False
+        self._hub.stop()
+
+    def read(self):
+        raise NotImplementedError
+
+    def reset(self):
+        self.data_queue.queue.clear()
+
+
+class MyoDaqEMG(_MyoDaq):
+    """
+    Myo armband EMG DAQ emulation.
+
+    Requires the MyoConnect application to be running.
+
+    Parameters
+    ----------
+    channels : list or tuple
+        Sensor channels to use. Each sensor has a single EMG
+        channel.
+    samples_per_read : int
+        Number of samples per channel to read in each read operation.
+
+    Attributes
+    ----------
+    data_queue : Queue
+        Fifo Queue to store incoming data.
+    """
+
+    def __init__(self, channels, samples_per_read):
+        super().__init__()
+        self.channels = channels
+        self.samples_per_read = samples_per_read
 
     def on_connected(self, event):
         event.device.stream_emg(True)
 
     def on_emg(self, event):
-        with self.lock:
-            self.data = event.emg
-
-
-
-class MyoIMUListener(_MyoListener):
-    """Simple Myo IMU device listener."""
-    def __init__(self):
-        super().__init__()
-
-    def on_connected(self, event):
-        event.device.stream_emg(True)
-
-    def on_orientation(self, event):
-        with self.lock:
-            self.data = event.orientation
-
-
-class _MyoDaq(object):
-    """Base Myo DAQ device."""
-    def __init__(self, channels, samples_per_read):
-        self.channels = np.asarray(channels)
-        self.samples_per_read = samples_per_read
-        self.listener = None
-        self.rate = None
-        self._total_channels = None
-
-    def start(self):
-        self.hub = myo.Hub()
-
-        self._flag = True
-        self._thread = Thread(target=self._run)
-        self._thread.start()
-
-    def _run(self):
-        with self.hub.run_in_background(self.listener.on_event):
-            while self._flag:
-                data = []
-                while len(data) < self.samples_per_read:
-                    cur_data = self.listener.get_data()
-                    data.append(cur_data)
-                    # Whenever queried, MYO will send data even if they haven't
-                    # been updated. Therefore, we need to wait until next data
-                    # become available so as to not read the same data twice.
-                    time.sleep(1. / self.rate)
-
-                data = np.asarray(data)
-                if data.squeeze().shape == (self.samples_per_read,
-                                            self._total_channels):
-                    self.data = data[:, self.channels]
-                else:
-                    self.data = np.zeros((self.samples_per_read,self.channels.size))
+        with self._lock:
+            self.data_queue.put(event.emg)
 
     def read(self):
-        return self.data
+        data = []
+        while len(data) < self.samples_per_read:
+            try:
+                data.append(self.data_queue.get())
+            except IndexError:
+                pass
 
-    def stop(self):
-        self._flag = False
-        self.hub.stop()
+        data = np.atleast_2d(np.asarray(data)).T
+        return data[self.channels, :]
 
-class MyoDaqEMG(_MyoDaq):
-    """
-    MYO EMG DAQ device.
-
-    Data acquisition and updating is implemented using a Thread.
-
-    Parameters
-    ----------
-    channels : list or tuple
-        Sensor channels to use. Each sensor has a single EMG
-        channel.
-
-    samples_per_read : int
-        Number of samples per channel to read in each read operation.
-
-    Attributes
-    ----------
-    rate : int
-        Sampling rate in Hz.
-    """
-
-    def __init__(self, channels, samples_per_read):
-        super().__init__(channels=channels,
-                                        samples_per_read=samples_per_read)
-        self.listener = MyoEmgListener()
-        self._total_channels = 8
-        self.rate = 200.
 
 class MyoDaqIMU(_MyoDaq):
     """
-    MYO IMU DAQ device.
+    Myo armband IMU DAQ emulation.
 
-    Data acquisition and updating is implemented using a Thread.
+    Requires the MyoConnect application to be running.
 
     Parameters
     ----------
-    channels : list or tuple
-        Sensor channels to use. Each sensor has a single EMG
-        channel.
-
     samples_per_read : int
         Number of samples per channel to read in each read operation.
 
     Attributes
     ----------
-    rate : int
-        Sampling rate in Hz.
+    data_queue : Queue
+        Fifo Queue to store incoming data.
     """
+
     def __init__(self, samples_per_read):
-        super().__init__(channels=1,
-                                        samples_per_read=samples_per_read)
-        self.listener = MyoIMUCollector()
-        self._total_channels = 1
-        self.rate = 50.
+        super().__init__()
+        self.samples_per_read = samples_per_read
+
+    def on_connected(self, event):
+        event.device.request_rssi()
+
+    def on_orientation(self, event):
+        with self._lock:
+            self.data_queue.put(event.orientation)
+
+    def read(self):
+        data = []
+        while len(data) < self.samples_per_read:
+            try:
+                data.append(np.array(list(self.data_queue.get())))
+            except IndexError:
+                pass
+
+        data = np.atleast_2d(data).T
+        return data
